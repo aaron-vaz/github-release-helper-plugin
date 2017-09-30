@@ -44,9 +44,9 @@ public class GitHubAssetUploadCallable implements FileCallable<Void>
     public Void invoke(final File f, final VirtualChannel channel)
         throws IOException, InterruptedException
     {
-
-        final OkHttpClient httpClient = new OkHttpClient();
-        final Request request = buildAssetUploadRequest(release.getUploadUrl(), f, release.getRoot().getApiUrl());
+        final String apiURL = release.getRoot().getApiUrl();
+        final OkHttpClient httpClient = getHttpClient(apiURL);
+        final Request request = buildAssetUploadRequest(release.getUploadUrl(), f, apiURL);
         final Response response = httpClient.newCall(request).execute();
 
         if(!response.isSuccessful())
@@ -63,6 +63,19 @@ public class GitHubAssetUploadCallable implements FileCallable<Void>
         throws SecurityException
     {
 
+    }
+
+    private OkHttpClient getHttpClient(final String apiURL)
+    {
+        final Jenkins jenkins = Jenkins.getInstance();
+        if(jenkins.proxy == null)
+        {
+            return new OkHttpClient();
+        }
+        else
+        {
+            return new OkHttpClient().setProxy(jenkins.proxy.createProxy(apiURL));
+        }
     }
 
     private Request buildAssetUploadRequest(final String uploadURL, final File artifact, final String apiURL)
