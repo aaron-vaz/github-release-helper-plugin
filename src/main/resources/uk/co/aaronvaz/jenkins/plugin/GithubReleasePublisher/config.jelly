@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
+
+    <f:entry field="repoURL" title="Target Repository URL">
+        <f:textbox/>
+    </f:entry>
+
+    <f:entry field="releaseTag" title="Release Tag">
+        <f:textbox/>
+    </f:entry>
+
+    <f:entry field="commitish" title="The commit hash or branch name">
+        <f:textbox/>
+    </f:entry>
+
+    <f:entry field="releaseName" title="Release Name">
+        <f:textbox/>
+    </f:entry>
+
+    <f:entry field="releaseBody" title="Release Body">
+        <f:textbox/>
+    </f:entry>
+
+    <f:entry field="isPrerelease" title="Mark as Pre-Release">
+        <f:checkbox/>
+    </f:entry>
+
+    <f:entry field="isDraftRelease" title="Mark as Draft Release">
+        <f:checkbox/>
+    </f:entry>
+
+    <f:entry field="artifactPatterns" title="Artifact Patterns">
+        <f:textbox/>
+    </f:entry>
+
+</j:jelly>

@@ -1,0 +1,74 @@
+import org.gradle.api.tasks.wrapper.Wrapper.DistributionType
+
+buildscript {
+    repositories {
+        maven { url "https://plugins.gradle.org/m2/" }
+        maven { url 'http://repo.jenkins-ci.org/releases/' }
+    }
+
+    dependencies {
+        classpath("gradle.plugin.org.jenkins-ci.tools:gradle-jpi-plugin:0.22.0")
+    }
+}
+
+apply plugin: "org.jenkins-ci.jpi"
+apply plugin: "findbugs"
+
+group = "uk.co.aaronvaz"
+version = "0.0.1-SNAPSHOT"
+description = "Jenkins plugin to automatically create releases for git scm services"
+
+jenkinsPlugin {
+    coreVersion = "2.19"
+    displayName = "SCM Release Helper Plugin"
+    shortName = "scm-release-helper"
+    workDir = file("$buildDir/work")
+
+    // The developers section is optional, and corresponds to the POM developers section.
+    developers {
+        developer {
+            id "aaron-vaz"
+            name "Aaron Vaz"
+            email "vazaaron08@gmail.com"
+        }
+    }
+}
+
+findbugs {
+    effort = "max"
+    reportLevel = "high"
+}
+
+repositories {
+    jcenter()
+}
+
+dependencies {
+    compile("com.coravy.hudson.plugins.github:github:1.28.0")
+    compile("org.jenkins-ci.plugins:github-api:1.89")
+
+    jenkinsPlugins("com.coravy.hudson.plugins.github:github:1.28.0@jar")
+    jenkinsPlugins("org.jenkins-ci.plugins:github-api:1.89@jar")
+
+    jenkinsTest("org.jenkins-ci.plugins:matrix-project:1.7.1")
+    jenkinsTest("org.jenkins-ci.main:jenkins-test-harness:2.22@jar")
+    jenkinsTest("org.jenkins-ci.plugins:token-macro:2.3@jar")
+    jenkinsTest("org.jenkins-ci.plugins:credentials:2.1.16@jar")
+    jenkinsTest("org.jenkins-ci.plugins.workflow:workflow-step-api:2.13@jar")
+    jenkinsTest("org.jenkins-ci.plugins:scm-api:2.2.2@jar")
+    jenkinsTest("org.jenkins-ci.plugins:structs:1.10@jar")
+    jenkinsTest("org.jenkins-ci.modules:instance-identity:2.1@jar")
+
+    testCompile("org.assertj:assertj-core:3.8.0")
+}
+
+task cleanUp(type: Delete) {
+    delete("target")
+}
+
+clean.dependsOn("cleanUp")
+
+task wrapper(type: Wrapper) {
+    gradleVersion = "4.1"
+    distributionType = DistributionType.ALL
+}
