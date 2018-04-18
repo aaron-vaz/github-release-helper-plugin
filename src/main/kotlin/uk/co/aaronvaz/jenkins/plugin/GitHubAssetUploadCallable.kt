@@ -17,25 +17,30 @@ import org.kohsuke.github.GHRelease
 import java.io.File
 import java.io.IOException
 
-class GitHubAssetUploadCallable(private val release: GHRelease, private val run: Run<*, *>, private val listener: TaskListener) : FileCallable<Void>
+class GitHubAssetUploadCallable : FileCallable<Void>
 {
+    var listener: TaskListener? = null
+    var run: Run<*, *>? = null
+    var release: GHRelease? = null
+    var client: OkHttpClient = OkHttpClient()
+
     private val archiveType = MediaType.parse("application/zip")
 
     @Throws(IOException::class, InterruptedException::class)
     override fun invoke(f: File, channel: VirtualChannel): Void?
     {
-        val apiURL = release.root.apiUrl
-        val httpClient = getHttpClient(apiURL)
-        val request = buildAssetUploadRequest(release.uploadUrl, f, apiURL)
+        val apiURL = release!!.root.apiUrl
+        val httpClient = setupProxy(client, apiURL)
+        val request = buildAssetUploadRequest(release!!.uploadUrl, f, apiURL)
         val response = httpClient.newCall(request).execute()
 
         if(!response.isSuccessful)
         {
-            with(listener) {
+            with(listener!!) {
                 error("Error uploading artifacts response code returned: %d \n", response.code())
                 error("Response body: %s \n", response.body().string())
             }
-            run.setResult(Result.FAILURE)
+            run!!.setResult(Result.FAILURE)
         }
         return null
     }
@@ -46,17 +51,14 @@ class GitHubAssetUploadCallable(private val release: GHRelease, private val run:
 
     }
 
-    private fun getHttpClient(apiURL: String): OkHttpClient
+    private fun setupProxy(client: OkHttpClient, apiURL: String): OkHttpClient
     {
         val jenkins = Jenkins.getInstance()
-        return if(jenkins.proxy == null)
+        if(jenkins.proxy != null)
         {
-            OkHttpClient()
+            client.proxy = jenkins.proxy.createProxy(apiURL)
         }
-        else
-        {
-            OkHttpClient().setProxy(jenkins.proxy.createProxy(apiURL))
-        }
+        return client
     }
 
     private fun buildAssetUploadRequest(uploadURL: String, artifact: File, apiURL: String): Request

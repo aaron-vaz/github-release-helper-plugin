@@ -14,7 +14,7 @@ pipeline {
             steps {
                 script {
                   sh("./gradlew build")
-                  }
+                }
             }
         }
     }
@@ -22,6 +22,7 @@ pipeline {
     post {
         always {
             archiveArtifacts(artifacts: "**/build/libs/*.hpi", fingerprint: true,  onlyIfSuccessful: true)
+            junit(testResults: "**/build/test-results/test/*.xml", allowEmptyResults: false, keepLongStdio: true)
             findbugs(canComputeNew: false, defaultEncoding: "", excludePattern: "", healthy: "", includePattern: "", pattern: '**/build/reports/findbugs/*.xml', unHealthy: "")
         }
     }

@@ -32,6 +32,8 @@ constructor(@JvmField val repoURL: String,
     @JvmField val isDraftRelease: Boolean,
     @JvmField val artifactPatterns: String) : Notifier(), SimpleBuildStep
 {
+    var githubCallable: GitHubAssetUploadCallable = GitHubAssetUploadCallable()
+
     @Throws(InterruptedException::class, IOException::class)
     override fun perform(run: Run<*, *>, workspace: FilePath, launcher: Launcher, listener: TaskListener)
     {
@@ -43,7 +45,11 @@ constructor(@JvmField val repoURL: String,
         for(artifactPath in workspace.list(artifactPatterns))
         {
             listener.logger.println("Uploading artifact " + artifactPath.name)
-            artifactPath.act(GitHubAssetUploadCallable(createdRelease!!, run, listener))
+            artifactPath.act(githubCallable.apply {
+                this.listener = listener
+                this.run = run
+                this.release = createdRelease
+            })
         }
     }
 

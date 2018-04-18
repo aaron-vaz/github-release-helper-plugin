@@ -31,6 +31,7 @@ jenkinsPlugin {
 findbugs {
     effort = "max"
     reportLevel = "high"
+    isShowProgress = true
 }
 
 
@@ -58,6 +59,9 @@ dependencies {
     jenkinsTest("org.jenkins-ci.plugins:structs:1.10@jar")
     jenkinsTest("org.jenkins-ci.modules:instance-identity:2.1@jar")
 
+    testCompile("junit:junit:4.12")
+    testCompile("org.mockito:mockito-core:2.10.0")
+    testCompile("com.nhaarman:mockito-kotlin-kt1.1:1.5.0")
     testCompile("org.assertj:assertj-core:3.8.0")
 }
 
