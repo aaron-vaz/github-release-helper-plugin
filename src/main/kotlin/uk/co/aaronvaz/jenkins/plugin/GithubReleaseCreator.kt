@@ -6,6 +6,7 @@ import hudson.FilePath
 import hudson.Launcher
 import hudson.model.AbstractProject
 import hudson.model.Item
+import hudson.model.Result
 import hudson.model.Run
 import hudson.model.TaskListener
 import hudson.tasks.BuildStepDescriptor
@@ -37,15 +38,24 @@ constructor(private val repoURL: String,
 
     override fun perform(run: Run<*, *>, workspace: FilePath, launcher: Launcher, listener: TaskListener)
     {
-        val repo = getGHRepository(repoURL) ?: throw RuntimeException("No Github repos found with URL: $repoURL")
-
-        listener.logger.println("Creating Github release using commit $commitish")
-        val release = createRelease(repo)
-
-        for(artifactPath in workspace.list(artifactPatterns))
+        try
         {
-            listener.logger.println("Uploading artifact ${artifactPath.name}")
-            artifactPath.act(githubCallableFactory.build(listener, run, release, OkHttpClient()))
+            val repo = getGHRepository(repoURL) ?: throw RuntimeException("No Github repos found with URL: $repoURL")
+
+            listener.logger.println("Creating Github release using commit $commitish")
+            val release = createRelease(repo)
+
+            for(artifactPath in workspace.list(artifactPatterns))
+            {
+                listener.logger.println("Uploading artifact ${artifactPath.name}")
+                artifactPath.act(githubCallableFactory.build(listener, run, release, OkHttpClient()))
+            }
+        }
+        catch(e: Exception)
+        {
+            listener.error("An error occurred while creating this release")
+            e.printStackTrace(listener.logger)
+            run.setResult(Result.FAILURE)
         }
     }
 

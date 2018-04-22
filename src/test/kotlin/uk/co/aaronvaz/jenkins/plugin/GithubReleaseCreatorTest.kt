@@ -91,6 +91,7 @@ class GithubReleaseCreatorTest
 
         // then
         jenkinsRule.assertBuildStatus(Result.FAILURE, freeStyleBuild)
+        jenkinsRule.assertLogContains("An error occurred while creating this release", freeStyleBuild)
         jenkinsRule.assertLogContains("No Github repos found with URL: https://localhost/test-repo.git", freeStyleBuild)
     }
 
@@ -121,6 +122,7 @@ class GithubReleaseCreatorTest
         val freeStyleBuild = project.scheduleBuild2(0).get()
 
         // then
+        jenkinsRule.assertLogContains("An error occurred while creating this release", freeStyleBuild)
         jenkinsRule.assertBuildStatus(Result.FAILURE, freeStyleBuild)
     }
 
