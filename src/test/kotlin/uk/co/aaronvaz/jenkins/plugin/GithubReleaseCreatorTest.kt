@@ -3,6 +3,9 @@ package uk.co.aaronvaz.jenkins.plugin
 import com.cloudbees.jenkins.GitHubRepositoryName
 import com.cloudbees.jenkins.GitHubRepositoryNameContributor
 import com.nhaarman.mockito_kotlin.any
+import com.nhaarman.mockito_kotlin.mock
+import com.nhaarman.mockito_kotlin.spy
+import com.nhaarman.mockito_kotlin.verify
 import hudson.Launcher
 import hudson.model.AbstractBuild
 import hudson.model.BuildListener
@@ -21,32 +24,33 @@ import org.kohsuke.github.GHRepository
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.BDDMockito.willReturn
 import org.mockito.BDDMockito.willThrow
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.times
-import org.mockito.Mockito.verify
+import uk.co.aaronvaz.jenkins.plugin.callable.GitHubAssetUploadCallable
+import uk.co.aaronvaz.jenkins.plugin.callable.GitHubAssetUploadCallableFactory
 import java.io.IOException
 
 class GithubReleaseCreatorTest
 {
-    @Rule
-    @JvmField
+    @get:Rule
+    @Suppress("MemberVisibilityCanBePrivate")
     val jenkinsRule = JenkinsRule()
 
-    private var jenkins: Jenkins? = null
+    private lateinit var jenkins: Jenkins
 
-    private var project: FreeStyleProject? = null
+    private lateinit var project: FreeStyleProject
 
     private val mockGitHubRepositoryNameContributor = MockGitHubRepositoryNameContributor()
 
     private val mockGitHubRepositoryName = mockGitHubRepositoryNameContributor.mockGitHubRepositoryName
 
-    private val mockGHRepository = mock(GHRepository::class.java)
+    private val mockGHRepository: GHRepository = mock()
 
-    private val mockGithubReleaseBuilder: GHReleaseBuilder = mock(GHReleaseBuilder::class.java)
+    private val mockGithubReleaseBuilder: GHReleaseBuilder = spy(GHReleaseBuilder(mockGHRepository, "v1.o"))
 
-    private val mockGithubRelease: GHRelease = mock(GHRelease::class.java)
+    private val mockGithubRelease: GHRelease = mock()
 
-    private val mockGitHubAssetUploadCallable: GitHubAssetUploadCallable = mock(GitHubAssetUploadCallable::class.java)
+    private val mockGitHubAssetUploadCallableFactory: GitHubAssetUploadCallableFactory = mock()
+
+    private val mockGitHubAssetUploadCallable: GitHubAssetUploadCallable = mock()
 
     @Before
     @Throws(Exception::class)
@@ -54,23 +58,28 @@ class GithubReleaseCreatorTest
     {
         jenkins = jenkinsRule.jenkins
         project = jenkinsRule.createFreeStyleProject()
-        project?.buildersList?.add(WriteToFileBuilder())
+        project.buildersList.add(WriteToFileBuilder())
 
         val githubReleaseCreator = GithubReleaseCreator("https://localhost/test-repo.git",
-            "v1.0",
-            "master",
-            "Test Release",
-            "Release Message",
-            false,
-            false,
-            "**/*.txt")
-        githubReleaseCreator.githubCallable = mockGitHubAssetUploadCallable
-        project?.publishersList?.add(githubReleaseCreator)
+                                                        "v1.0",
+                                                        "master",
+                                                        "Test Release",
+                                                        "Release Message",
+                                                        false,
+                                                        false,
+                                                        "**/*.txt")
 
-        // 100% coverage
+        githubReleaseCreator.githubCallableFactory = mockGitHubAssetUploadCallableFactory
+        willReturn(mockGitHubAssetUploadCallable).given(mockGitHubAssetUploadCallableFactory).build(any(), any(), any(), any())
+
+        project.publishersList.add(githubReleaseCreator)
+
+        // increase coverage
+        githubReleaseCreator.githubCallableFactory
+
         val descriptor = GithubReleaseCreator.DescriptorImpl()
         descriptor.displayName
-        descriptor.isApplicable(project!!.javaClass)
+        descriptor.isApplicable(project.javaClass)
     }
 
     @Test
@@ -78,7 +87,7 @@ class GithubReleaseCreatorTest
     fun perform_NoGithubReposDefined_ExceptionThrown()
     {
         // when
-        val freeStyleBuild = project!!.scheduleBuild2(0).get()
+        val freeStyleBuild = project.scheduleBuild2(0).get()
 
         // then
         jenkinsRule.assertBuildStatus(Result.FAILURE, freeStyleBuild)
@@ -93,12 +102,12 @@ class GithubReleaseCreatorTest
         willReturn(mockGithubRelease).given(mockGithubReleaseBuilder).create()
 
         // when
-        val freeStyleBuild = project!!.scheduleBuild2(0).get()
+        val freeStyleBuild = project.scheduleBuild2(0).get()
 
         // then
         jenkinsRule.assertBuildStatusSuccess(freeStyleBuild)
         jenkinsRule.assertLogContains("Creating Github release using commit master", freeStyleBuild)
-        verify(mockGitHubAssetUploadCallable, times(1)).invoke(any(), any())
+        verify(mockGitHubAssetUploadCallable).invoke(any(), any())
     }
 
     @Test
@@ -109,17 +118,15 @@ class GithubReleaseCreatorTest
         willThrow(IOException("Release already exists")).given(mockGithubReleaseBuilder).create()
 
         // when
-        val freeStyleBuild = project!!.scheduleBuild2(0).get()
+        val freeStyleBuild = project.scheduleBuild2(0).get()
 
         // then
         jenkinsRule.assertBuildStatus(Result.FAILURE, freeStyleBuild)
-        jenkinsRule.assertLogContains("Creating Github release using commit master", freeStyleBuild)
-        jenkinsRule.assertLogContains("Error creating GitHub release", freeStyleBuild)
     }
 
     private fun setupCommonMocks()
     {
-        jenkins!!.getExtensionList(GitHubRepositoryNameContributor::class.java).add(0, mockGitHubRepositoryNameContributor)
+        jenkins.getExtensionList(GitHubRepositoryNameContributor::class.java).add(0, mockGitHubRepositoryNameContributor)
         willReturn(listOf(mockGHRepository)).given(mockGitHubRepositoryName).resolve()
         willReturn("https://localhost/test-repo.git").given(mockGHRepository).gitHttpTransportUrl()
         willReturn(mockGithubReleaseBuilder).given(mockGHRepository).createRelease(eq("v1.0"))
@@ -132,18 +139,17 @@ class GithubReleaseCreatorTest
             build!!.getWorkspace()!!.child("test.txt").write("running junit tests", "UTF-8")
             return true
         }
-
     }
 
     class MockGitHubRepositoryNameContributor : GitHubRepositoryNameContributor()
     {
-        val mockGitHubRepositoryName: GitHubRepositoryName = mock(GitHubRepositoryName::class.java)
+        val mockGitHubRepositoryName: GitHubRepositoryName = mock()
 
         override fun parseAssociatedNames(item: Item?, result: MutableCollection<GitHubRepositoryName>?)
         {
             if(result is Set<*>)
             {
-                result.add(mockGitHubRepositoryName)
+                result += mockGitHubRepositoryName
             }
         }
     }

@@ -1,11 +1,11 @@
 package uk.co.aaronvaz.jenkins.plugin
 
+import com.squareup.okhttp.OkHttpClient
 import hudson.Extension
 import hudson.FilePath
 import hudson.Launcher
 import hudson.model.AbstractProject
 import hudson.model.Item
-import hudson.model.Result
 import hudson.model.Run
 import hudson.model.TaskListener
 import hudson.tasks.BuildStepDescriptor
@@ -20,69 +20,53 @@ import org.jenkinsci.plugins.github.util.JobInfoHelpers.associatedNames
 import org.kohsuke.github.GHRelease
 import org.kohsuke.github.GHRepository
 import org.kohsuke.stapler.DataBoundConstructor
-import java.io.IOException
+import uk.co.aaronvaz.jenkins.plugin.callable.GitHubAssetUploadCallableFactory
 
-class GithubReleaseCreator @DataBoundConstructor
-constructor(@JvmField val repoURL: String,
-    @JvmField val releaseTag: String,
-    @JvmField val commitish: String,
-    @JvmField val releaseName: String,
-    @JvmField val releaseBody: String,
-    @JvmField val isPrerelease: Boolean,
-    @JvmField val isDraftRelease: Boolean,
-    @JvmField val artifactPatterns: String) : Notifier(), SimpleBuildStep
+class GithubReleaseCreator
+@DataBoundConstructor
+constructor(private val repoURL: String,
+            private val releaseTag: String,
+            private val commitish: String,
+            private val releaseName: String,
+            private val releaseBody: String,
+            private val isPreRelease: Boolean,
+            private val isDraftRelease: Boolean,
+            private val artifactPatterns: String) : Notifier(), SimpleBuildStep
 {
-    var githubCallable: GitHubAssetUploadCallable = GitHubAssetUploadCallable()
+    var githubCallableFactory = GitHubAssetUploadCallableFactory()
 
-    @Throws(InterruptedException::class, IOException::class)
     override fun perform(run: Run<*, *>, workspace: FilePath, launcher: Launcher, listener: TaskListener)
     {
-        val repo = getGHRepository(repoURL) ?: throw RuntimeException("No Github repos found with URL: " + repoURL)
+        val repo = getGHRepository(repoURL) ?: throw RuntimeException("No Github repos found with URL: $repoURL")
 
-        listener.logger.println("Creating Github release using commit " + commitish)
-        val createdRelease = createRelease(repo, run, listener)
+        listener.logger.println("Creating Github release using commit $commitish")
+        val release = createRelease(repo)
 
         for(artifactPath in workspace.list(artifactPatterns))
         {
-            listener.logger.println("Uploading artifact " + artifactPath.name)
-            artifactPath.act(githubCallable.apply {
-                this.listener = listener
-                this.run = run
-                this.release = createdRelease
-            })
+            listener.logger.println("Uploading artifact ${artifactPath.name}")
+            artifactPath.act(githubCallableFactory.build(listener, run, release, OkHttpClient()))
         }
     }
 
     private fun getGHRepository(repoURL: String): GHRepository?
     {
         val items = Jenkins.getInstance().getAllItems<Item>(Item::class.java)
-        val repos = from(items).transformAndConcat(associatedNames()).toList()
+        val repos = from(items).transformAndConcat(associatedNames())
 
-        return repos
-            .flatMap { it.resolve() }
+        return repos.flatMap { it.resolve() }
             .firstOrNull { repoURL.equals(it.gitHttpTransportUrl(), ignoreCase = true) || repoURL.equals(it.sshUrl, ignoreCase = true) }
     }
 
-    private fun createRelease(repo: GHRepository, run: Run<*, *>, listener: TaskListener): GHRelease?
+    private fun createRelease(repo: GHRepository): GHRelease
     {
-        try
-        {
-            val releaseBuilder = repo.createRelease(releaseTag)
-            releaseBuilder.body(releaseBody)
-            releaseBuilder.commitish(commitish)
-            releaseBuilder.name(releaseName)
-            releaseBuilder.draft(isDraftRelease)
-            releaseBuilder.prerelease(isPrerelease)
-            return releaseBuilder.create()
-        }
-        catch(e: IOException)
-        {
-            listener.error("Error creating GitHub release")
-            e.printStackTrace(listener.logger)
-            run.setResult(Result.FAILURE)
-        }
-
-        return null
+        return repo.createRelease(releaseTag)
+            .body(releaseBody)
+            .commitish(commitish)
+            .name(releaseName)
+            .draft(isDraftRelease)
+            .prerelease(isPreRelease)
+            .create()
     }
 
     override fun getRequiredMonitorService(): BuildStepMonitor
@@ -92,7 +76,7 @@ constructor(@JvmField val repoURL: String,
 
     @Symbol("githubRelease")
     @Extension
-    open class DescriptorImpl : BuildStepDescriptor<Publisher>()
+    class DescriptorImpl : BuildStepDescriptor<Publisher>()
     {
         init
         {
@@ -101,7 +85,7 @@ constructor(@JvmField val repoURL: String,
 
         override fun getDisplayName(): String
         {
-            return "Create a Release Using the SCM service's API"
+            return "Create a Release Using the Github API"
         }
 
         override fun isApplicable(jobType: Class<out AbstractProject<*, *>>): Boolean
