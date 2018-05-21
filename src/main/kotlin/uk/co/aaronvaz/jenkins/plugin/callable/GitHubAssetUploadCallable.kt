@@ -10,58 +10,67 @@ import hudson.model.Run
 import hudson.model.TaskListener
 import hudson.remoting.VirtualChannel
 import jenkins.model.Jenkins
-import org.jenkinsci.plugins.github.GitHubPlugin
-import org.jenkinsci.plugins.github.config.GitHubServerConfig
 import org.jenkinsci.remoting.RoleChecker
 import org.kohsuke.github.GHRelease
 import java.io.File
 import java.io.IOException
 
-class GitHubAssetUploadCallable(var listener: TaskListener,
-                                var run: Run<*, *>,
-                                var release: GHRelease,
-                                var client: OkHttpClient) : FileCallable<Unit>
+class GitHubAssetUploadCallable(private val listener: TaskListener,
+                                private val run: Run<*, *>,
+                                private val release: GHRelease,
+                                private val apiToken: String,
+                                private val client: OkHttpClient) : FileCallable<Unit>
 {
-    private val archiveType: MediaType = MediaType.parse("application/zip")
+    private val archiveType: MediaType? = MediaType.parse("application/zip")
 
     @Throws(IOException::class, InterruptedException::class)
     override fun invoke(f: File, channel: VirtualChannel)
     {
-        val apiURL = release.root.apiUrl
-        val httpClient = setupProxy(client, apiURL)
-        val request = buildAssetUploadRequest(release.uploadUrl, f, apiURL)
-        val response = httpClient.newCall(request).execute()
+        // first check if asset exists
+        val asset = release.assets.firstOrNull { it.name == f.name }
+
+        if(asset != null)
+        {
+            // if the asset is the same length skip
+            if(asset.size == f.length())
+            {
+                listener.logger.println("Asset ${asset.name} from ${release.name} already exists, skipping...")
+                listener.logger.println("Please manually delete the asset if re-upload is required")
+                return
+            }
+
+            // if the asset isn't of the same length exists delete it before continuing
+            if(asset.size != f.length())
+            {
+                listener.logger.println("Deleting asset ${asset.name} from ${release.name}")
+                asset.delete()
+            }
+        }
+
+        val request = buildUploadRequest(release.uploadUrl, f)
+        val response = client.newCall(request).execute()
 
         if(!response.isSuccessful)
         {
             with(listener)
             {
                 error("Error uploading artifacts response code returned: ${response.code()} \n")
-                error("Response body: ${response.body().string()} \n")
-                error("Deleting release ${release.name} \n")
+                response.body().use { error("Response body: ${it?.string()} \n") }
             }
-            release.delete()
             run.setResult(Result.FAILURE)
+            return
         }
+
+        listener.logger.println("Uploaded artifact ${f.name}")
     }
 
-    private fun setupProxy(client: OkHttpClient, apiURL: String): OkHttpClient
-    {
-        val jenkins = getJenkinsInstance()
-        if(jenkins.proxy != null)
-        {
-            client.proxy = jenkins.proxy.createProxy(apiURL)
-        }
-        return client
-    }
-
-    private fun buildAssetUploadRequest(uploadURL: String, artifact: File, apiURL: String): Request
+    private fun buildUploadRequest(uploadURL: String, artifact: File): Request
     {
         return Request.Builder()
             .url(createUploadURL(uploadURL, artifact.name))
             .post(RequestBody.create(archiveType, artifact))
             .addHeader("User-Agent", "Jenkins/${Jenkins.getVersion()}")
-            .addHeader("Authorization", "token ${getApiToken(apiURL)}")
+            .addHeader("Authorization", "token $apiToken")
             .addHeader("Content-Type", archiveType.toString())
             .build()
     }
@@ -69,17 +78,6 @@ class GitHubAssetUploadCallable(var listener: TaskListener,
     private fun createUploadURL(urlTemplate: String, artifactName: String): String
     {
         return urlTemplate.replace("{?name,label}", "?name=$artifactName")
-    }
-
-    internal fun getApiToken(apiURL: String): String
-    {
-        val gitHubServerConfig = GitHubPlugin.configuration().configs.first { it.apiUrl == apiURL }
-        return GitHubServerConfig.tokenFor(gitHubServerConfig.credentialsId)
-    }
-
-    internal fun getJenkinsInstance(): Jenkins
-    {
-        return Jenkins.getInstance()
     }
 
     @Throws(SecurityException::class)

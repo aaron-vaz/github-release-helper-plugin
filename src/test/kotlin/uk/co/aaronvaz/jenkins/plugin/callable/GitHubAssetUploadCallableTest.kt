@@ -3,29 +3,24 @@ package uk.co.aaronvaz.jenkins.plugin.callable
 import com.nhaarman.mockito_kotlin.any
 import com.nhaarman.mockito_kotlin.inOrder
 import com.nhaarman.mockito_kotlin.mock
-import com.nhaarman.mockito_kotlin.spy
 import com.nhaarman.mockito_kotlin.times
 import com.squareup.okhttp.Call
 import com.squareup.okhttp.OkHttpClient
 import com.squareup.okhttp.Response
-import hudson.ProxyConfiguration
 import hudson.model.Result
 import hudson.model.Run
 import hudson.model.TaskListener
 import hudson.remoting.VirtualChannel
-import jenkins.model.Jenkins
-import org.junit.Ignore
 import org.junit.Test
+import org.kohsuke.github.GHAsset
 import org.kohsuke.github.GHRelease
 import org.kohsuke.github.GitHub
 import org.mockito.BDDMockito.willReturn
 import java.io.File
-import java.net.Proxy
+import java.io.PrintStream
 
 class GitHubAssetUploadCallableTest
 {
-    private val mockJenkins: Jenkins = mock()
-
     private val mockListener: TaskListener = mock()
 
     private val mockRun: Run<*, *> = mock()
@@ -33,6 +28,8 @@ class GitHubAssetUploadCallableTest
     private val mockRoot: GitHub = mock()
 
     private val mockRelease: GHRelease = mock()
+
+    private val mockAsset: GHAsset = mock()
 
     private val mockClient: OkHttpClient = mock()
 
@@ -48,10 +45,7 @@ class GitHubAssetUploadCallableTest
 
     private val testUploadURL = "https://test.github.com/uploads/api/{?name,label}"
 
-    private val gitHubAssetUploadCallable = spy(GitHubAssetUploadCallable(mockListener,
-                                                                          mockRun,
-                                                                          mockRelease,
-                                                                          mockClient))
+    private val gitHubAssetUploadCallable = GitHubAssetUploadCallable(mockListener, mockRun, mockRelease, "", mockClient)
 
     @Test
     fun invoke_ValidArguments_AssetsUploadedAndBuildSuccessful()
@@ -65,40 +59,63 @@ class GitHubAssetUploadCallableTest
         // then
         inOrder(mockClient, mockCall, mockListener, mockRun)
         {
-            verify(mockClient, times(0)).proxy = any()
             verify(mockClient).newCall(any())
+            verify(mockCall).execute()
+
             verify(mockListener, times(0)).error(any())
             verify(mockRun, times(0)).setResult(Result.FAILURE)
         }
     }
 
     @Test
-    fun invoke_ValidArgumentsAndProxySet_AssetsUploadedUsingProxyServerAndBuildSuccessful()
+    fun invoke_AssetSameSizeAsRemote_AssetNotUploaded()
     {
         // given
         setupMocks(true)
-
-        val mockProxyConfiguration: ProxyConfiguration = mock()
-        val mockProxy: Proxy = mock()
-
-        willReturn(mockProxy).given(mockProxyConfiguration).createProxy(any())
-        mockJenkins.proxy = mockProxyConfiguration
+        willReturn(listOf(mockAsset)).given(mockRelease).assets
+        willReturn("testFile").given(mockAsset).name
+        willReturn(10L).given(mockAsset).size
 
         // when
         gitHubAssetUploadCallable.invoke(mockFile, mockVirtualChannel)
 
         // then
-        inOrder(mockClient, mockCall, mockListener, mockRun)
+        inOrder(mockAsset, mockClient, mockCall, mockListener, mockRun)
         {
-            verify(mockClient).proxy = any()
-            verify(mockClient).newCall(any())
+            verify(mockAsset, times(0)).delete()
+            verify(mockClient, times(0)).newCall(any())
+            verify(mockCall, times(0)).execute()
+
             verify(mockListener, times(0)).error(any())
             verify(mockRun, times(0)).setResult(Result.FAILURE)
         }
     }
 
     @Test
-    @Ignore("Stubbing response differently causes null pointer")
+    fun invoke_AssetAlreadyExists_AssetDeletedBeforeNewUploaded()
+    {
+        // given
+        setupMocks(true)
+        willReturn(listOf(mockAsset)).given(mockRelease).assets
+        willReturn("testFile").given(mockAsset).name
+        willReturn(20L).given(mockAsset).size
+
+        // when
+        gitHubAssetUploadCallable.invoke(mockFile, mockVirtualChannel)
+
+        // then
+        inOrder(mockAsset, mockClient, mockCall, mockListener, mockRun)
+        {
+            verify(mockAsset).delete()
+            verify(mockClient).newCall(any())
+            verify(mockCall).execute()
+
+            verify(mockListener, times(0)).error(any())
+            verify(mockRun, times(0)).setResult(Result.FAILURE)
+        }
+    }
+
+    @Test
     fun invoke_ApiRequestFailed_AssetsNotUploadedAndBuildFailed()
     {
         // given
@@ -108,31 +125,29 @@ class GitHubAssetUploadCallableTest
         gitHubAssetUploadCallable.invoke(mockFile, mockVirtualChannel)
 
         // then
-        inOrder(mockClient, mockCall, mockListener, mockRelease, mockRun)
+        inOrder(mockClient, mockCall, mockListener, mockRun)
         {
-            verify(mockClient, times(0)).proxy = any()
             verify(mockClient).newCall(any())
             verify(mockCall).execute()
 
-            verify(mockListener, times(3)).error(any())
-            verify(mockRelease).delete()
+            verify(mockListener, times(2)).error(any())
             verify(mockRun).setResult(Result.FAILURE)
         }
     }
 
     private fun setupMocks(isResponseSuccessful: Boolean)
     {
+        willReturn(mock<PrintStream>()).given(mockListener).logger
+
         willReturn(testUploadURL).given(mockRelease).uploadUrl
         willReturn(mockRoot).given(mockRelease).root
         willReturn(testApiURL).given(mockRoot).apiUrl
-
-        willReturn(mockJenkins).given(gitHubAssetUploadCallable).getJenkinsInstance()
-        willReturn("token").given(gitHubAssetUploadCallable).getApiToken(any())
 
         willReturn(mockCall).given(mockClient).newCall(any())
         willReturn(mockResponse).given(mockCall).execute()
         willReturn(isResponseSuccessful).given(mockResponse).isSuccessful
 
         willReturn("testFile").given(mockFile).name
+        willReturn(10L).given(mockFile).length()
     }
 }

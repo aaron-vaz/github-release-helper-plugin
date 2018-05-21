@@ -16,14 +16,18 @@ import hudson.tasks.Publisher
 import jenkins.model.Jenkins
 import jenkins.tasks.SimpleBuildStep
 import org.jenkinsci.Symbol
+import org.jenkinsci.plugins.github.GitHubPlugin
+import org.jenkinsci.plugins.github.config.GitHubServerConfig
 import org.jenkinsci.plugins.github.util.FluentIterableWrapper.from
 import org.jenkinsci.plugins.github.util.JobInfoHelpers.associatedNames
 import org.kohsuke.github.GHRelease
 import org.kohsuke.github.GHRepository
 import org.kohsuke.stapler.DataBoundConstructor
-import uk.co.aaronvaz.jenkins.plugin.callable.GitHubAssetUploadCallableFactory
+import uk.co.aaronvaz.jenkins.plugin.callable.GitHubAssetUploadCallable
+import uk.co.aaronvaz.jenkins.plugin.http.HttpClientFactory
+import java.net.URL
 
-class GithubReleaseCreator
+class GitHubReleaseCreator
 @DataBoundConstructor
 constructor(private val repoURL: String,
             private val releaseTag: String,
@@ -34,21 +38,20 @@ constructor(private val repoURL: String,
             private val isDraftRelease: Boolean,
             private val artifactPatterns: String) : Notifier(), SimpleBuildStep
 {
-    var githubCallableFactory = GitHubAssetUploadCallableFactory()
+    var jenkins: Jenkins = Jenkins.getInstance()
 
     override fun perform(run: Run<*, *>, workspace: FilePath, launcher: Launcher, listener: TaskListener)
     {
         try
         {
-            val repo = getGHRepository(repoURL) ?: throw RuntimeException("No Github repos found with URL: $repoURL")
-
-            listener.logger.println("Creating Github release using commit $commitish")
-            val release = createRelease(repo)
+            val repo = getGHRepository(repoURL) ?: throw RuntimeException("No GitHub repos found with URL: $repoURL")
+            val release = createOrGetRelease(repo, listener)
+            val apiURL = release.root.apiUrl
+            val apiToken = getApiToken(apiURL)
 
             for(artifactPath in workspace.list(artifactPatterns))
             {
-                listener.logger.println("Uploading artifact ${artifactPath.name}")
-                artifactPath.act(githubCallableFactory.build(listener, run, release, OkHttpClient()))
+                artifactPath.act(GitHubAssetUploadCallable(listener, run, release, apiToken, getHttpClient(apiURL)))
             }
         }
         catch(e: Exception)
@@ -59,13 +62,31 @@ constructor(private val repoURL: String,
         }
     }
 
+    private fun getApiToken(apiURL: String): String
+    {
+        val gitHubServerConfig = GitHubPlugin.configuration().configs.first { URL(it.apiUrl).host == URL(apiURL).host }
+        return GitHubServerConfig.tokenFor(gitHubServerConfig.credentialsId)
+    }
+
     private fun getGHRepository(repoURL: String): GHRepository?
     {
-        val items = Jenkins.getInstance().getAllItems<Item>(Item::class.java)
+        val items = jenkins.getAllItems<Item>(Item::class.java)
         val repos = from(items).transformAndConcat(associatedNames())
 
         return repos.flatMap { it.resolve() }
-            .firstOrNull { repoURL.equals(it.gitHttpTransportUrl(), ignoreCase = true) || repoURL.equals(it.sshUrl, ignoreCase = true) }
+            .firstOrNull { repoURL.equals(it.gitHttpTransportUrl(), true) || repoURL.equals(it.sshUrl, true) }
+    }
+
+    private fun createOrGetRelease(repo: GHRepository, listener: TaskListener): GHRelease
+    {
+        val release = repo.listReleases().asList().firstOrNull { releaseTag == it.tagName }
+        if(release != null)
+        {
+            listener.logger.println("Release $releaseTag already exists continuing")
+            return release
+        }
+        listener.logger.println("Creating GitHub release $releaseTag using commit $commitish")
+        return createRelease(repo)
     }
 
     private fun createRelease(repo: GHRepository): GHRelease
@@ -77,6 +98,12 @@ constructor(private val repoURL: String,
             .draft(isDraftRelease)
             .prerelease(isPreRelease)
             .create()
+    }
+
+    private fun getHttpClient(apiURL: String): OkHttpClient
+    {
+        val proxy = jenkins.proxy?.createProxy(apiURL)
+        return HttpClientFactory.buildHttpClient(proxy)!!
     }
 
     override fun getRequiredMonitorService(): BuildStepMonitor
@@ -95,7 +122,7 @@ constructor(private val repoURL: String,
 
         override fun getDisplayName(): String
         {
-            return "Create a Release Using the Github API"
+            return "Create a Release Using the GitHub API"
         }
 
         override fun isApplicable(jobType: Class<out AbstractProject<*, *>>): Boolean

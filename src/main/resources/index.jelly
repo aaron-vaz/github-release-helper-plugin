@@ -1,4 +1,4 @@
 <?jelly escape-by-default='true'?>
 <div>
-    This plugin provides the ability to automatically create a release in Github
+    This plugin provides the ability to automatically create a release in GitHub
 </div>
