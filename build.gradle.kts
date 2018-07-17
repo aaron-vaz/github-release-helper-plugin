@@ -4,17 +4,17 @@ import org.jenkinsci.gradle.plugins.jpi.ServerTask
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 group = "uk.co.aaronvaz"
-version = "1.2.0"
+version = "1.2.1"
 description = "Jenkins plugin to automatically create releases on GitHub"
 
 plugins {
-    val kotlinVersion = "1.2.41"
+    val kotlinVersion = "1.2.51"
 
     kotlin("jvm") version (kotlinVersion)
     kotlin("kapt") version (kotlinVersion)
 
-    id("org.jenkins-ci.jpi") version ("0.26.0")
-    id("com.github.ben-manes.versions") version ("0.17.0")
+    id("org.jenkins-ci.jpi") version ("0.27.0")
+    id("com.github.ben-manes.versions") version ("0.20.0")
     id("com.github.ksoichiro.console.reporter") version ("0.5.0")
 
     jacoco
@@ -59,7 +59,7 @@ dependencies {
     jenkinsTest("org.jenkins-ci.plugins:structs:1.14")
 
     testCompile("junit:junit:4.12")
-    testCompile("com.nhaarman:mockito-kotlin:1.5.0")
+    testCompile("com.nhaarman:mockito-kotlin:1.6.0")
 }
 
 tasks.withType<KotlinCompile> {
@@ -86,8 +86,8 @@ task("ci") {
     }
 }
 
-task<Wrapper>("wrapper") {
-    gradleVersion = "4.7"
+tasks.withType<Wrapper> {
+    gradleVersion = "4.9"
 }
 
 

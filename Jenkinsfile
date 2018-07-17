@@ -37,7 +37,7 @@ pipeline {
 
         success {
             script {
-                if("${env.BRANCH_NAME}" == "master") {
+                if(env.BRANCH_NAME == "master") {
                     githubRelease(repoURL: getRepoURL(),
                         releaseTag: "v${currentBuild.displayName}",
                         commitish: getCommitID(),

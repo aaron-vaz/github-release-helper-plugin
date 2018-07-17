@@ -38,7 +38,7 @@ constructor(private val repoURL: String,
             private val isDraftRelease: Boolean,
             private val artifactPatterns: String) : Notifier(), SimpleBuildStep
 {
-    var jenkins: Jenkins = Jenkins.getInstance()
+    private val jenkins = Jenkins.getInstance()
 
     override fun perform(run: Run<*, *>, workspace: FilePath, launcher: Launcher, listener: TaskListener)
     {
@@ -49,9 +49,16 @@ constructor(private val repoURL: String,
             val apiURL = release.root.apiUrl
             val apiToken = getApiToken(apiURL)
 
-            for(artifactPath in workspace.list(artifactPatterns))
+            if(artifactPatterns.isNotBlank())
             {
-                artifactPath.act(GitHubAssetUploadCallable(listener, run, release, apiToken, getHttpClient(apiURL)))
+                for(artifactPath in workspace.list(artifactPatterns))
+                {
+                    artifactPath.act(GitHubAssetUploadCallable(listener, run, release, apiToken, getHttpClient(apiURL)))
+                }
+            }
+            else
+            {
+                listener.logger.println("Artifacts pattern not supplied, skipping artifact upload")
             }
         }
         catch(e: Exception)

@@ -4,7 +4,9 @@ import com.cloudbees.jenkins.GitHubRepositoryName
 import com.cloudbees.jenkins.GitHubRepositoryNameContributor
 import com.nhaarman.mockito_kotlin.any
 import com.nhaarman.mockito_kotlin.mock
+import com.nhaarman.mockito_kotlin.never
 import com.nhaarman.mockito_kotlin.spy
+import com.nhaarman.mockito_kotlin.verify
 import com.squareup.okhttp.Call
 import com.squareup.okhttp.MediaType
 import com.squareup.okhttp.OkHttpClient
@@ -88,18 +90,6 @@ class GitHubReleaseCreatorTest
 
         HttpClientFactory.clients[null] = mockOkHttpClient
 
-        val githubReleaseCreator = GitHubReleaseCreator(testRepoURL,
-                                                        "v1.0",
-                                                        "master",
-                                                        "Test Release",
-                                                        "Release Message",
-                                                        false,
-                                                        false,
-                                                        "**/*.txt")
-
-
-        project.publishersList.add(githubReleaseCreator)
-
         // increase coverage
         val descriptor = GitHubReleaseCreator.DescriptorImpl()
         descriptor.displayName
@@ -116,6 +106,7 @@ class GitHubReleaseCreatorTest
     fun perform_NoGitHubReposDefined_ExceptionThrown()
     {
         // given
+        addPlugin("**/*.txt")
         jenkins.getExtensionList(GitHubRepositoryNameContributor::class.java).add(0, mockGitHubRepositoryNameContributor)
         willReturn(listOf(mockGHRepository)).given(mockGitHubRepositoryName).resolve()
         willReturn("some other url").given(mockGHRepository).gitHttpTransportUrl()
@@ -133,6 +124,7 @@ class GitHubReleaseCreatorTest
     fun perform_ErrorCreatingRelease_FailedBuild()
     {
         // given
+        addPlugin("**/*.txt")
         setupHappyPath()
         willThrow(IOException("Error creating release")).given(mockGitHubReleaseBuilder).create()
 
@@ -148,6 +140,7 @@ class GitHubReleaseCreatorTest
     fun perform_ReleaseAlreadyExists_SuccessfulBuild()
     {
         // given
+        addPlugin("**/*.txt")
         setupHappyPath()
         willReturn("v1.0").given(mockGitHubRelease).tagName
 
@@ -163,6 +156,7 @@ class GitHubReleaseCreatorTest
     fun perform_AssetFailedToUpload_FailedBuild()
     {
         // given
+        addPlugin("**/*.txt")
         setupHappyPath()
         willReturn(mockGitHubRelease).given(mockGitHubReleaseBuilder).create()
         willReturn(false).given(mockResponse).isSuccessful
@@ -178,9 +172,10 @@ class GitHubReleaseCreatorTest
     }
 
     @Test
-    fun perform_JenkinsInstanceSetupCorrectly_SuccessfulBuild()
+    fun perform_BlankArtifactPattern_SuccessfulBuildButNoArtifactsUploaded()
     {
         // given
+        addPlugin("")
         setupHappyPath()
         willReturn(mockGitHubRelease).given(mockGitHubReleaseBuilder).create()
 
@@ -188,8 +183,46 @@ class GitHubReleaseCreatorTest
         val freeStyleBuild = project.scheduleBuild2(0).get()
 
         // then
+        verify(mockOkHttpClient, never()).newCall(any())
+        verify(mockCall, never()).execute()
+
         jenkinsRule.assertBuildStatusSuccess(freeStyleBuild)
         jenkinsRule.assertLogContains("Creating GitHub release v1.0 using commit master", freeStyleBuild)
+        jenkinsRule.assertLogContains("Artifacts pattern not supplied, skipping artifact upload", freeStyleBuild)
+    }
+
+    @Test
+    fun perform_JenkinsInstanceSetupCorrectly_SuccessfulBuild()
+    {
+        // given
+        addPlugin("**/*.txt")
+        setupHappyPath()
+        willReturn(mockGitHubRelease).given(mockGitHubReleaseBuilder).create()
+
+        // when
+        val freeStyleBuild = project.scheduleBuild2(0).get()
+
+        // then
+        verify(mockOkHttpClient).newCall(any())
+        verify(mockCall).execute()
+
+        jenkinsRule.assertBuildStatusSuccess(freeStyleBuild)
+        jenkinsRule.assertLogContains("Creating GitHub release v1.0 using commit master", freeStyleBuild)
+    }
+
+    private fun addPlugin(artifactPattern: String)
+    {
+        val githubReleaseCreator = GitHubReleaseCreator(testRepoURL,
+                                                        "v1.0",
+                                                        "master",
+                                                        "Test Release",
+                                                        "Release Message",
+                                                        false,
+                                                        false,
+                                                        artifactPattern)
+
+
+        project.publishersList.add(githubReleaseCreator)
     }
 
     private fun setupHappyPath()

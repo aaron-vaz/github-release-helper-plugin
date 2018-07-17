@@ -21,7 +21,7 @@ class GitHubAssetUploadCallable(private val listener: TaskListener,
                                 private val apiToken: String,
                                 private val client: OkHttpClient) : FileCallable<Unit>
 {
-    private val archiveType: MediaType? = MediaType.parse("application/zip")
+    private val archiveType: MediaType = MediaType.parse("application/zip")
 
     @Throws(IOException::class, InterruptedException::class)
     override fun invoke(f: File, channel: VirtualChannel)

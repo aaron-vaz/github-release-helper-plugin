@@ -3,6 +3,7 @@ package uk.co.aaronvaz.jenkins.plugin.callable
 import com.nhaarman.mockito_kotlin.any
 import com.nhaarman.mockito_kotlin.inOrder
 import com.nhaarman.mockito_kotlin.mock
+import com.nhaarman.mockito_kotlin.never
 import com.nhaarman.mockito_kotlin.times
 import com.squareup.okhttp.Call
 import com.squareup.okhttp.OkHttpClient
@@ -62,8 +63,8 @@ class GitHubAssetUploadCallableTest
             verify(mockClient).newCall(any())
             verify(mockCall).execute()
 
-            verify(mockListener, times(0)).error(any())
-            verify(mockRun, times(0)).setResult(Result.FAILURE)
+            verify(mockListener, never()).error(any())
+            verify(mockRun, never()).setResult(Result.FAILURE)
         }
     }
 
@@ -82,12 +83,12 @@ class GitHubAssetUploadCallableTest
         // then
         inOrder(mockAsset, mockClient, mockCall, mockListener, mockRun)
         {
-            verify(mockAsset, times(0)).delete()
-            verify(mockClient, times(0)).newCall(any())
-            verify(mockCall, times(0)).execute()
+            verify(mockAsset, never()).delete()
+            verify(mockClient, never()).newCall(any())
+            verify(mockCall, never()).execute()
 
-            verify(mockListener, times(0)).error(any())
-            verify(mockRun, times(0)).setResult(Result.FAILURE)
+            verify(mockListener, never()).error(any())
+            verify(mockRun, never()).setResult(Result.FAILURE)
         }
     }
 
@@ -110,8 +111,8 @@ class GitHubAssetUploadCallableTest
             verify(mockClient).newCall(any())
             verify(mockCall).execute()
 
-            verify(mockListener, times(0)).error(any())
-            verify(mockRun, times(0)).setResult(Result.FAILURE)
+            verify(mockListener, never()).error(any())
+            verify(mockRun, never()).setResult(Result.FAILURE)
         }
     }
 
