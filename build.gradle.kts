@@ -1,21 +1,16 @@
-import org.gradle.api.tasks.wrapper.Wrapper.DistributionType
 import org.jenkinsci.gradle.plugins.jpi.JpiDeveloper
-import org.jenkinsci.gradle.plugins.jpi.ServerTask
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 group = "uk.co.aaronvaz"
-version = "1.2.1"
+version = "1.3.0"
 description = "Jenkins plugin to automatically create releases on GitHub"
 
 plugins {
-    val kotlinVersion = "1.2.51"
+    val kotlinVersion = "1.3.21"
 
     kotlin("jvm") version (kotlinVersion)
     kotlin("kapt") version (kotlinVersion)
 
-    id("org.jenkins-ci.jpi") version ("0.27.0")
-    id("com.github.ben-manes.versions") version ("0.20.0")
-    id("com.github.ksoichiro.console.reporter") version ("0.5.0")
+    id("org.jenkins-ci.jpi") version ("0.29.0")
 
     jacoco
 }
@@ -43,8 +38,9 @@ dependencies {
     // SezPoz is used to process @hudson.Extension and other annotations
     kapt("net.java.sezpoz:sezpoz:1.12")
 
-    compile(kotlin("stdlib"))
-    compile(kotlin("reflect"))
+    implementation(kotlin("stdlib"))
+    implementation(kotlin("reflect"))
+    implementation("com.squareup.okhttp:logging-interceptor:2.7.5")
 
     jenkinsPlugins("com.coravy.hudson.plugins.github:github:1.27.0")
     jenkinsPlugins("org.jenkins-ci.plugins:github-api:1.85.1")
@@ -58,36 +54,40 @@ dependencies {
     jenkinsTest("org.jenkins-ci.plugins:scm-api:2.2.6")
     jenkinsTest("org.jenkins-ci.plugins:structs:1.14")
 
-    testCompile("junit:junit:4.12")
-    testCompile("com.nhaarman:mockito-kotlin:1.6.0")
-}
-
-tasks.withType<KotlinCompile> {
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
-}
-
-tasks.withType<Test> {
-    finalizedBy("jacocoTestReport")
+    testImplementation("junit:junit:4.12")
+    testImplementation("com.nhaarman.mockitokotlin2:mockito-kotlin:2.1.0")
+    testImplementation("com.squareup.okhttp:mockwebserver:2.7.5")
 }
 
 task<Delete>("cleanUp") {
     delete("target")
 }
 
-tasks.findByName("clean")!!.dependsOn("cleanUp")
-
 task("ci") {
-    group = "build"
+    group = LifecycleBasePlugin.BUILD_GROUP
     dependsOn("build")
     doLast {
         file("$buildDir/version.txt").writeText(version.toString(), Charsets.UTF_8)
     }
 }
 
-tasks.withType<Wrapper> {
-    gradleVersion = "4.9"
-}
+tasks {
+    compileKotlin {
+        kotlinOptions {
+            jvmTarget = "1.8"
+        }
+    }
 
+    test {
+        finalizedBy("jacocoTestReport")
+    }
+
+    clean {
+        dependsOn("cleanUp")
+    }
+
+    wrapper {
+        gradleVersion = "5.2.1"
+    }
+}
 

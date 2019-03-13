@@ -54,7 +54,7 @@ class GitHubAssetUploadCallable(private val listener: TaskListener,
         {
             with(listener)
             {
-                error("Error uploading artifacts response code returned: ${response.code()} \n")
+                error("Error uploading ${f.name} response code returned: ${response.code()}")
                 response.body().use { error("Response body: ${it?.string()} \n") }
             }
             run.setResult(Result.FAILURE)

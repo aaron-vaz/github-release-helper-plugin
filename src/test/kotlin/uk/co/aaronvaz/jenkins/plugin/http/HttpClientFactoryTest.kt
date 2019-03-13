@@ -1,6 +1,6 @@
 package uk.co.aaronvaz.jenkins.plugin.http
 
-import com.nhaarman.mockito_kotlin.mock
+import com.nhaarman.mockitokotlin2.mock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -16,7 +16,7 @@ class HttpClientFactoryTest
         val proxy = null
 
         // when
-        val client = HttpClientFactory.buildHttpClient(proxy)
+        val client = HttpClientFactory.buildHttpClient(proxy, System.out)
 
         // then
         assertNotNull(client)
@@ -30,7 +30,7 @@ class HttpClientFactoryTest
         val proxy: Proxy = mock()
 
         // when
-        val client = HttpClientFactory.buildHttpClient(proxy)
+        val client = HttpClientFactory.buildHttpClient(proxy, System.out)
 
         // then
         assertNotNull(client)
@@ -41,10 +41,10 @@ class HttpClientFactoryTest
     fun buildHttpClient_ClientAlreadyCreated_CachedClientReturned()
     {
         // given
-        val cachedClient = HttpClientFactory.buildHttpClient(null)
+        val cachedClient = HttpClientFactory.buildHttpClient(null, System.out)
 
         // when
-        val client = HttpClientFactory.buildHttpClient(null)
+        val client = HttpClientFactory.buildHttpClient(null, System.out)
 
         // then
         assertEquals(cachedClient, client)

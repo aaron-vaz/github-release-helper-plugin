@@ -2,16 +2,10 @@ package uk.co.aaronvaz.jenkins.plugin
 
 import com.cloudbees.jenkins.GitHubRepositoryName
 import com.cloudbees.jenkins.GitHubRepositoryNameContributor
-import com.nhaarman.mockito_kotlin.any
-import com.nhaarman.mockito_kotlin.mock
-import com.nhaarman.mockito_kotlin.never
-import com.nhaarman.mockito_kotlin.spy
-import com.nhaarman.mockito_kotlin.verify
-import com.squareup.okhttp.Call
-import com.squareup.okhttp.MediaType
-import com.squareup.okhttp.OkHttpClient
-import com.squareup.okhttp.Response
-import com.squareup.okhttp.ResponseBody
+import com.nhaarman.mockitokotlin2.mock
+import com.nhaarman.mockitokotlin2.spy
+import com.squareup.okhttp.mockwebserver.MockResponse
+import com.squareup.okhttp.mockwebserver.MockWebServer
 import hudson.Launcher
 import hudson.model.AbstractBuild
 import hudson.model.BuildListener
@@ -23,6 +17,7 @@ import org.jenkinsci.plugins.github.GitHubPlugin
 import org.jenkinsci.plugins.github.config.GitHubServerConfig
 import org.jenkinsci.plugins.github.config.GitHubTokenCredentialsCreator
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -38,6 +33,7 @@ import org.mockito.BDDMockito.willReturn
 import org.mockito.BDDMockito.willThrow
 import uk.co.aaronvaz.jenkins.plugin.http.HttpClientFactory
 import java.io.IOException
+import java.net.URLDecoder
 
 class GitHubReleaseCreatorTest
 {
@@ -63,15 +59,13 @@ class GitHubReleaseCreatorTest
 
     private val mockGithubRoot: GitHub = mock()
 
-    private val mockOkHttpClient: OkHttpClient = mock()
-
-    private val mockCall: Call = mock()
-
-    private val mockResponse: Response = mock()
-
     private val testRepoURL = "https://localhost/test-repo.git"
 
     private val testApiURL = "http://localhost/api/v3"
+
+    private lateinit var mockServer: MockWebServer
+
+    private lateinit var testUploadURL: String
 
     @Before
     @Throws(Exception::class)
@@ -81,14 +75,17 @@ class GitHubReleaseCreatorTest
         project = jenkinsRule.createFreeStyleProject()
         project.buildersList.add(WriteToFileBuilder())
 
+        mockServer = MockWebServer()
+        mockServer.start()
+
+        testUploadURL = URLDecoder.decode(mockServer.url("/upload{?name,label}").toString(), Charsets.UTF_8.name())
+
         val gitHubTokenCredentialsCreator = GitHubTokenCredentialsCreator()
         val credentials = gitHubTokenCredentialsCreator.createCredentials(testApiURL, "token", "testUser")
 
         val gitHubServerConfig = GitHubServerConfig(credentials.id)
         gitHubServerConfig.apiUrl = testApiURL
         GitHubPlugin.configuration().configs = listOf(gitHubServerConfig)
-
-        HttpClientFactory.clients[null] = mockOkHttpClient
 
         // increase coverage
         val descriptor = GitHubReleaseCreator.DescriptorImpl()
@@ -108,6 +105,7 @@ class GitHubReleaseCreatorTest
         // given
         addPlugin("**/*.txt")
         jenkins.getExtensionList(GitHubRepositoryNameContributor::class.java).add(0, mockGitHubRepositoryNameContributor)
+
         willReturn(listOf(mockGHRepository)).given(mockGitHubRepositoryName).resolve()
         willReturn("some other url").given(mockGHRepository).gitHttpTransportUrl()
 
@@ -125,7 +123,8 @@ class GitHubReleaseCreatorTest
     {
         // given
         addPlugin("**/*.txt")
-        setupHappyPath()
+
+        setupCommonMocks()
         willThrow(IOException("Error creating release")).given(mockGitHubReleaseBuilder).create()
 
         // when
@@ -141,7 +140,8 @@ class GitHubReleaseCreatorTest
     {
         // given
         addPlugin("**/*.txt")
-        setupHappyPath()
+
+        setupCommonMocks()
         willReturn("v1.0").given(mockGitHubRelease).tagName
 
         // when
@@ -157,18 +157,49 @@ class GitHubReleaseCreatorTest
     {
         // given
         addPlugin("**/*.txt")
-        setupHappyPath()
+
+        setupCommonMocks {
+            // 2 requests for the retry
+            it.enqueue(MockResponse().setResponseCode(500).setBody("response message"))
+            it.enqueue(MockResponse().setResponseCode(500).setBody("response message"))
+        }
+
         willReturn(mockGitHubRelease).given(mockGitHubReleaseBuilder).create()
-        willReturn(false).given(mockResponse).isSuccessful
-        willReturn(500).given(mockResponse).code()
 
         // when
         val freeStyleBuild = project.scheduleBuild2(0).get()
 
         // then
+        assertEquals(2, mockServer.requestCount)
+
         jenkinsRule.assertBuildStatus(Result.FAILURE, freeStyleBuild)
-        jenkinsRule.assertLogContains("Error uploading artifacts response code returned: 500", freeStyleBuild)
+        jenkinsRule.assertLogContains("Error uploading test.txt response code returned: 500", freeStyleBuild)
+        jenkinsRule.assertLogContains("Retrying upload of test.txt", freeStyleBuild)
         jenkinsRule.assertLogContains("Response body: response message", freeStyleBuild)
+    }
+
+    @Test
+    fun perform_AssetUploadedOnRetry_SuccessfulBuild()
+    {
+        // given
+        addPlugin("**/*.txt")
+
+        setupCommonMocks {
+            it.enqueue(MockResponse().setResponseCode(500).setBody("response message"))
+            it.enqueue(MockResponse().setResponseCode(201).setBody("response message"))
+        }
+
+        willReturn(mockGitHubRelease).given(mockGitHubReleaseBuilder).create()
+
+        // when
+        val freeStyleBuild = project.scheduleBuild2(0).get()
+
+        // then
+        assertEquals(2, mockServer.requestCount)
+
+        jenkinsRule.assertBuildStatusSuccess(freeStyleBuild)
+        jenkinsRule.assertLogContains("Retrying upload of test.txt", freeStyleBuild)
+        jenkinsRule.assertLogContains("Creating GitHub release v1.0 using commit master", freeStyleBuild)
     }
 
     @Test
@@ -176,15 +207,15 @@ class GitHubReleaseCreatorTest
     {
         // given
         addPlugin("")
-        setupHappyPath()
+
+        setupCommonMocks()
         willReturn(mockGitHubRelease).given(mockGitHubReleaseBuilder).create()
 
         // when
         val freeStyleBuild = project.scheduleBuild2(0).get()
 
         // then
-        verify(mockOkHttpClient, never()).newCall(any())
-        verify(mockCall, never()).execute()
+        assertEquals(0, mockServer.requestCount)
 
         jenkinsRule.assertBuildStatusSuccess(freeStyleBuild)
         jenkinsRule.assertLogContains("Creating GitHub release v1.0 using commit master", freeStyleBuild)
@@ -196,15 +227,14 @@ class GitHubReleaseCreatorTest
     {
         // given
         addPlugin("**/*.txt")
-        setupHappyPath()
+        setupCommonMocks()
         willReturn(mockGitHubRelease).given(mockGitHubReleaseBuilder).create()
 
         // when
         val freeStyleBuild = project.scheduleBuild2(0).get()
 
         // then
-        verify(mockOkHttpClient).newCall(any())
-        verify(mockCall).execute()
+        assertEquals(1, mockServer.requestCount)
 
         jenkinsRule.assertBuildStatusSuccess(freeStyleBuild)
         jenkinsRule.assertLogContains("Creating GitHub release v1.0 using commit master", freeStyleBuild)
@@ -225,7 +255,8 @@ class GitHubReleaseCreatorTest
         project.publishersList.add(githubReleaseCreator)
     }
 
-    private fun setupHappyPath()
+    private fun setupCommonMocks(responseMocks: (MockWebServer) -> Unit =
+                                     { it.enqueue(MockResponse().setBody("response message").setResponseCode(201)) })
     {
         jenkins.getExtensionList(GitHubRepositoryNameContributor::class.java).add(0, mockGitHubRepositoryNameContributor)
 
@@ -237,17 +268,10 @@ class GitHubReleaseCreatorTest
         willReturn(listOf(mockGitHubRelease)).given(mockPagedIterable).asList()
 
         willReturn(mockGithubRoot).given(mockGitHubRelease).root
-        willReturn("http://upload.localhost/").given(mockGitHubRelease).uploadUrl
-
+        willReturn(testUploadURL).given(mockGitHubRelease).uploadUrl
         willReturn(testApiURL).given(mockGithubRoot).apiUrl
 
-        willReturn(mockCall).given(mockOkHttpClient).newCall(any())
-        willReturn(mockResponse).given(mockCall).execute()
-        willReturn(true).given(mockResponse).isSuccessful
-        willReturn(201).given(mockResponse).code()
-
-        val responseBody = ResponseBody.create(MediaType.parse("application/text"), "response message")
-        willReturn(responseBody).given(mockResponse).body()
+        responseMocks(mockServer)
     }
 
     class WriteToFileBuilder : TestBuilder()

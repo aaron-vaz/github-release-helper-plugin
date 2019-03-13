@@ -25,6 +25,7 @@ import org.kohsuke.github.GHRepository
 import org.kohsuke.stapler.DataBoundConstructor
 import uk.co.aaronvaz.jenkins.plugin.callable.GitHubAssetUploadCallable
 import uk.co.aaronvaz.jenkins.plugin.http.HttpClientFactory
+import java.io.PrintStream
 import java.net.URL
 
 class GitHubReleaseCreator
@@ -53,7 +54,8 @@ constructor(private val repoURL: String,
             {
                 for(artifactPath in workspace.list(artifactPatterns))
                 {
-                    artifactPath.act(GitHubAssetUploadCallable(listener, run, release, apiToken, getHttpClient(apiURL)))
+                    val uploadCallable = GitHubAssetUploadCallable(listener, run, release, apiToken, getHttpClient(apiURL, listener.logger))
+                    artifactPath.act(uploadCallable)
                 }
             }
             else
@@ -107,10 +109,10 @@ constructor(private val repoURL: String,
             .create()
     }
 
-    private fun getHttpClient(apiURL: String): OkHttpClient
+    private fun getHttpClient(apiURL: String, logger: PrintStream): OkHttpClient
     {
         val proxy = jenkins.proxy?.createProxy(apiURL)
-        return HttpClientFactory.buildHttpClient(proxy)!!
+        return HttpClientFactory.buildHttpClient(proxy, logger)!!
     }
 
     override fun getRequiredMonitorService(): BuildStepMonitor

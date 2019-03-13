@@ -1,10 +1,10 @@
 package uk.co.aaronvaz.jenkins.plugin.callable
 
-import com.nhaarman.mockito_kotlin.any
-import com.nhaarman.mockito_kotlin.inOrder
-import com.nhaarman.mockito_kotlin.mock
-import com.nhaarman.mockito_kotlin.never
-import com.nhaarman.mockito_kotlin.times
+import com.nhaarman.mockitokotlin2.any
+import com.nhaarman.mockitokotlin2.inOrder
+import com.nhaarman.mockitokotlin2.mock
+import com.nhaarman.mockitokotlin2.never
+import com.nhaarman.mockitokotlin2.times
 import com.squareup.okhttp.Call
 import com.squareup.okhttp.OkHttpClient
 import com.squareup.okhttp.Response
